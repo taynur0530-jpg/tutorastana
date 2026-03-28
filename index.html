@@ -1182,8 +1182,19 @@ function pick(key, val, el) {
 
 function wizNext() { wizStep++; renderWizStep(); }
 function wizPrev() { if (wizStep>0) { wizStep--; renderWizStep(); } }
-function submitWiz() {
+async function submitWiz() {
   wizData.phone = document.getElementById('p-phone')?.value || '';
+  wizData.name = document.getElementById('p-name')?.value || '';
+  await apiCall('register_student', {
+    name: wizData.name,
+    phone: wizData.phone.replace(/\D/g,''),
+    subject: wizData.subject,
+    city: wizData.city,
+    format: wizData.format
+  });
+  wizStep = 5;
+  renderWizStep();
+}  wizData.phone = document.getElementById('p-phone')?.value || '';
   wizData.name = document.getElementById('p-name')?.value || '';
   registerStudent(wizData);
   showMatch(wizData);
@@ -1376,6 +1387,17 @@ function toggleDay(day, on) {
 }
 
 function submitTreg() {
+  async function submitTreg() {
+  const tutorData = {
+    name: document.getElementById('t-name')?.value || '',
+    phone: document.getElementById('t-phone')?.value?.replace(/\D/g,'') || '',
+    email: document.getElementById('t-email')?.value || '',
+    school: document.getElementById('t-school')?.value || '',
+    major: document.getElementById('t-major')?.value || '',
+    subjects: '',
+    hourly_rate: 0
+  };
+  await apiCall('register_tutor', tutorData);
   document.querySelectorAll('.step-p').forEach(p => p.classList.remove('active'));
   document.querySelector('.steps-bar').style.display = 'none';
   document.getElementById('treg-alert').style.display = 'none';
@@ -1503,6 +1525,20 @@ function pickLang(l) {
 const _sl = localStorage.getItem('ta_lang');
 if (_sl) { setLang(_sl); }
 else { document.getElementById('lang-screen').style.display = 'flex'; setLang('en'); }
+const API = 'http://tutorkz.abaicourse.com/api.php';
+
+async function apiCall(action, data) {
+  try {
+    const res = await fetch(API + '?action=' + action, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    return await res.json();
+  } catch(e) {
+    return {success: false};
+  }
+}
 </script>
 </body>
 </html>
