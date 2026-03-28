@@ -677,7 +677,7 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
       <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--text);margin-bottom:8px" data-i18n="faq_cta_h"></div>
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px" data-i18n="faq_cta_p"></p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <a href="https://wa.me/77712865283" style="background:var(--or);color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:10px;text-decoration:none">💬 WhatsApp</a>
+        <a href="https://wa.me/77001234567" style="background:var(--or);color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:10px;text-decoration:none">💬 WhatsApp</a>
         <a href="/cdn-cgi/l/email-protection#3058555c5c5f704445445f42514344515e511e5b4a" style="background:none;border:1.5px solid var(--border);color:var(--muted);font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;text-decoration:none">✉ <span class="__cf_email__" data-cfemail="9af2fff6f6f5daeeefeef5e8fbe9eefbf4fbb4f1e0">[email&#160;protected]</span></a>
       </div>
     </div>
@@ -776,6 +776,22 @@ body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI'
 </a>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+
+const API = 'http://tutorkz.abaicourse.com/api.php';
+
+async function apiCall(action, data) {
+  try {
+    const res = await fetch(API + '?action=' + action, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    return await res.json();
+  } catch(e) {
+    console.error('API error:', e);
+    return {success: false};
+  }
+}
 // ═══════════════════ TRANSLATIONS ═══════════════════
 const T = {
 en: {
@@ -1185,18 +1201,28 @@ function wizPrev() { if (wizStep>0) { wizStep--; renderWizStep(); } }
 async function submitWiz() {
   wizData.phone = document.getElementById('p-phone')?.value || '';
   wizData.name = document.getElementById('p-name')?.value || '';
-  await apiCall('register_student', {
-    name: wizData.name,
-    phone: wizData.phone.replace(/\D/g,''),
-    subject: wizData.subject,
-    city: wizData.city,
-    format: wizData.format
-  });
-  wizStep = 5;
-  renderWizStep();
-}  wizData.phone = document.getElementById('p-phone')?.value || '';
-  wizData.name = document.getElementById('p-name')?.value || '';
-  registerStudent(wizData);
+  const phone = wizData.phone.replace(/\D/g,'');
+  // Save to MySQL
+  try {
+    const result = await apiCall('register_student', {
+      name: wizData.name, phone: phone,
+      subject: wizData.subject, city: wizData.city, format: wizData.format
+    });
+    if(result && result.success) wizData._student_id = result.student_id;
+  } catch(e) { console.error(e); }
+  // Save to localStorage backup
+  const tutor = matchTutor(wizData.subject);
+  const parents = JSON.parse(localStorage.getItem('ta_parents')||'{}');
+  parents[phone] = {
+    name: wizData.name, phone: phone,
+    subject: wizData.subject, city: wizData.city, format: wizData.format,
+    tutor: {name:tutor.name, school:tutor.school, subjects:tutor.subjects, rate:tutor.rate, phone:tutor.phone, bg:tutor.bg},
+    password: '123456', reviewed: false, createdAt: new Date().toISOString()
+  };
+  localStorage.setItem('ta_parents', JSON.stringify(parents));
+  // Admin WA
+  const adminMsg = '🆕 New student!\nName: '+wizData.name+'\nPhone: +7 '+phone+'\nSubject: '+(wizData.subject||'—')+' · '+(wizData.city||'Astana')+' · '+(wizData.format||'—')+'\nMatched: '+tutor.name;
+  wizData._adminWa = 'https://wa.me/77712865283?text='+encodeURIComponent(adminMsg);
   showMatch(wizData);
 }
 
@@ -1386,18 +1412,27 @@ function toggleDay(day, on) {
   document.getElementById('dchk-'+day).classList.toggle('on', on);
 }
 
-function submitTreg() {
-  async function submitTreg() {
+async function submitTreg() {
+  const subjects = [];
+  document.querySelectorAll('#subjRows .sr').forEach(row => {
+    const subj = row.querySelector('select')?.value;
+    const rate = row.querySelector('input[type=number]')?.value;
+    if(subj) subjects.push(subj + (rate ? ' ('+rate+' KZT/hr)' : ''));
+  });
   const tutorData = {
     name: document.getElementById('t-name')?.value || '',
-    phone: document.getElementById('t-phone')?.value?.replace(/\D/g,'') || '',
+    phone: (document.getElementById('t-phone')?.value || '').replace(/\D/g,''),
     email: document.getElementById('t-email')?.value || '',
     school: document.getElementById('t-school')?.value || '',
     major: document.getElementById('t-major')?.value || '',
-    subjects: '',
-    hourly_rate: 0
+    year: document.getElementById('t-year')?.value || '',
+    bio: document.getElementById('t-bio')?.value || '',
+    subjects: subjects.join(', '),
+    hourly_rate: parseInt(document.querySelector('#subjRows .sr input[type=number]')?.value) || 0
   };
-  await apiCall('register_tutor', tutorData);
+  try {
+    await apiCall('register_tutor', tutorData);
+  } catch(e) { console.error(e); }
   document.querySelectorAll('.step-p').forEach(p => p.classList.remove('active'));
   document.querySelector('.steps-bar').style.display = 'none';
   document.getElementById('treg-alert').style.display = 'none';
@@ -1406,7 +1441,7 @@ function submitTreg() {
 }
 
 // ═══════════════════ LOGIN ═══════════════════
-function doLogin() {
+async function doLogin() {
   const emailOrPhone = document.getElementById('li-email').value.trim();
   const pw = document.getElementById('li-pw').value;
   const alertEl = document.getElementById('login-alert');
@@ -1414,20 +1449,39 @@ function doLogin() {
     alertEl.textContent = lang==='ru' ? 'Введите номер и пароль.' : lang==='kz' ? 'Нөмір мен құпия сөзді енгізіңіз.' : 'Please enter your phone and password.';
     alertEl.className='alert err'; alertEl.style.display='block'; return;
   }
-  // Check parent account (phone + 123456)
   const phone = emailOrPhone.replace(/\D/g,'');
+  alertEl.textContent = lang==='ru' ? '✓ Входим…' : lang==='kz' ? '✓ Кіруде…' : '✓ Signing in…';
+  alertEl.className='alert ok'; alertEl.style.display='block';
+  // Try API login
+  try {
+    const result = await apiCall('student_login', {phone: phone, password: pw});
+    if(result && result.success) {
+      const d = result.data;
+      const parent = {
+        name: d.name, phone: d.phone,
+        subject: d.subject, city: d.city, format: d.format,
+        reviewed: d.reviewed == 1,
+        tutor: d.tutor_name ? {
+          name: d.tutor_name, phone: d.tutor_phone,
+          school: d.tutor_school,
+          subjects: d.tutor_subjects ? d.tutor_subjects.split(',') : [],
+          rate: d.hourly_rate + ' KZT',
+          bg: 'linear-gradient(135deg,#FF6B1A,#FFB347)'
+        } : null
+      };
+      setTimeout(() => openParentDash(parent), 500);
+      return;
+    }
+  } catch(e) { console.error(e); }
+  // Fallback localStorage
   const parents = JSON.parse(localStorage.getItem('ta_parents')||'{}');
   const parent = parents[phone];
   if (parent && pw === '123456') {
-    alertEl.textContent = lang==='ru' ? '✓ Входим…' : lang==='kz' ? '✓ Кіруде…' : '✓ Signing in…';
-    alertEl.className='alert ok'; alertEl.style.display='block';
-    setTimeout(() => openParentDash(parent), 800);
+    setTimeout(() => openParentDash(parent), 500);
     return;
   }
-  // Tutor login fallback
-  alertEl.textContent = lang==='ru' ? '✓ Выполняется вход…' : lang==='kz' ? '✓ Кіру орындалуда…' : '✓ Signing in…';
-  alertEl.className='alert ok'; alertEl.style.display='block';
-  setTimeout(() => showScreen('s-tutor-reg'), 1200);
+  alertEl.textContent = lang==='ru' ? 'Неверный номер или пароль.' : lang==='kz' ? 'Қате нөмір немесе құпия сөз.' : 'Invalid phone or password.';
+  alertEl.className='alert err';
 }
 
 // ══ PARENT DASHBOARD LOGIC ══
@@ -1525,20 +1579,6 @@ function pickLang(l) {
 const _sl = localStorage.getItem('ta_lang');
 if (_sl) { setLang(_sl); }
 else { document.getElementById('lang-screen').style.display = 'flex'; setLang('en'); }
-const API = 'http://tutorkz.abaicourse.com/api.php';
-
-async function apiCall(action, data) {
-  try {
-    const res = await fetch(API + '?action=' + action, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data)
-    });
-    return await res.json();
-  } catch(e) {
-    return {success: false};
-  }
-}
 </script>
 </body>
 </html>
